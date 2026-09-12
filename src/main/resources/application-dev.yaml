@@ -1,0 +1,9 @@
+spring:
+  datasource:
+    password: ${DB_PASSWORD:local-campus-only}
+  rabbitmq:
+    password: ${RABBITMQ_PASSWORD:local-rabbit-only}
+app:
+  account:
+    # 仅开发模拟：验证码在接口响应中返回，不写日志；未接入真实短信。
+    dev-sms-enabled: true
