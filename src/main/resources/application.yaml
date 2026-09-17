@@ -45,6 +45,12 @@ mybatis-plus:
   global-config:
     banner: false
 app:
+  activity:
+    detail-ttl: 10m
+    null-ttl: 30s
+    ttl-jitter: 2m
+    lock-wait: 3s
+    runtime-buffer: 24h
   account:
     code-ttl: 5m
     resend-interval: 60s

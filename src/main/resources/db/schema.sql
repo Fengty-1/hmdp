@@ -9,3 +9,47 @@ CREATE TABLE IF NOT EXISTS account_user (
     CONSTRAINT uk_account_user_phone UNIQUE (phone),
     CONSTRAINT ck_account_user_role CHECK (role IN ('STUDENT', 'ORGANIZER'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS activity_location (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    organizer_id BIGINT NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    address VARCHAR(255) NOT NULL,
+    longitude DOUBLE NOT NULL,
+    latitude DOUBLE NOT NULL,
+    CONSTRAINT fk_location_organizer FOREIGN KEY (organizer_id) REFERENCES account_user(id),
+    CONSTRAINT ck_location_longitude CHECK (longitude BETWEEN -180 AND 180),
+    CONSTRAINT ck_location_latitude CHECK (latitude BETWEEN -85.05112878 AND 85.05112878)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS activity (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    organizer_id BIGINT NOT NULL,
+    location_id BIGINT NOT NULL,
+    title VARCHAR(100) NOT NULL,
+    description TEXT NOT NULL,
+    cover_image VARCHAR(500),
+    CONSTRAINT fk_activity_organizer FOREIGN KEY (organizer_id) REFERENCES account_user(id),
+    CONSTRAINT fk_activity_location FOREIGN KEY (location_id) REFERENCES activity_location(id),
+    INDEX idx_activity_location (location_id, id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS activity_session (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    activity_id BIGINT NOT NULL,
+    capacity INT NOT NULL,
+    remaining_capacity INT NOT NULL,
+    registration_start_at TIMESTAMP(3) NOT NULL,
+    registration_end_at TIMESTAMP(3) NOT NULL,
+    start_at TIMESTAMP(3) NOT NULL,
+    end_at TIMESTAMP(3) NOT NULL,
+    status VARCHAR(16) NOT NULL DEFAULT 'DRAFT',
+    runtime_expire_at TIMESTAMP(3) NULL,
+    CONSTRAINT fk_session_activity FOREIGN KEY (activity_id) REFERENCES activity(id),
+    CONSTRAINT ck_session_capacity CHECK (capacity > 0 AND remaining_capacity BETWEEN 0 AND capacity),
+    CONSTRAINT ck_session_time CHECK (registration_start_at < registration_end_at
+        AND registration_end_at <= start_at AND start_at < end_at),
+    CONSTRAINT ck_session_status CHECK ((status = 'DRAFT' AND runtime_expire_at IS NULL)
+        OR (status = 'PUBLISHED' AND runtime_expire_at > end_at)),
+    INDEX idx_session_activity_status (activity_id, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

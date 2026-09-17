@@ -1,6 +1,6 @@
 # 校园及周边活动预约平台
 
-通过活动发现、限量报名和到场核验，连接学生与校园活动组织者。当前已完成 **Stage 1：项目基础 + Account**，22 项测试通过；活动、报名和核验仍按 [项目方案](docs/PROJECT_PLAN.md) 留在后续阶段。
+通过活动发现、限量报名和到场核验，连接学生与校园活动组织者。当前已完成 **Stage 1：项目基础 + Account** 与 **Stage 2：Activity**，共 43 项测试通过。活动创建、场次发布、列表/详情缓存和附近查询的接口示例与阅读路线见 [Stage 2 指南](docs/STAGE2_GUIDE.md)；报名与核验按 [项目方案](docs/PROJECT_PLAN.md) 留在 Stage 3～4。验证结果见方案第 10 节。
 
 这是一个 Maven 模块、一个 Spring Boot 应用。原黑马点评的源码、配置、SQL、测试、POM 和 README 原样保存在 [legacy/hmdp](legacy/hmdp)，供学习对照；不参与根项目构建，也不连接原点评数据库。
 
@@ -14,7 +14,11 @@ mvn -B -ntp test
 mvn spring-boot:run "-Dspring-boot.run.profiles=dev"
 ```
 
-应用默认监听 `127.0.0.1:8081`，使用独立的 `campus_booking` 数据库和 `campus-booking-dev` 容器/数据卷。打开另一个终端检查：
+应用默认监听 `127.0.0.1:8081`，使用独立的 `campus_booking` 数据库和 `campus-booking-dev` 容器/数据卷。
+
+**从已有 Stage 1 数据卷继续时，先按 [Stage 2 指南第 2 节](docs/STAGE2_GUIDE.md#2-在已有-stage-1-环境继续启动) 补建三张 Activity 表，再启动应用。** 全新数据卷自动建表；无需删除数据卷。
+
+启动后打开另一个终端检查：
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8081/actuator/health
@@ -26,9 +30,10 @@ Invoke-RestMethod http://127.0.0.1:8081/actuator/health
 | --- | --- | --- | --- |
 | Java | 21 | — | 应用运行环境 |
 | Spring Boot | 3.5.16 | 8081 | HTTP、配置、组件装配 |
-| MyBatis-Plus | 3.5.17，Boot 3 starter | — | 用户持久化 |
-| MySQL | 8.4.8 | 13306 | 用户、固定角色、手机号唯一约束 |
-| Redis | 7.4.8 | 16379 | 验证码、冷却时间、Token |
+| MyBatis-Plus | 3.5.17，Boot 3 starter | — | 用户、地点、活动与场次持久化 |
+| MySQL | 8.4.8 | 13306 | 用户与活动事实、约束和发布事务 |
+| Redis | 7.4.8 | 16379 | 登录态、详情缓存、GEO、独立报名运行配置 |
+| Redisson | 3.52.0，核心客户端 | — | 详情重建与展示更新的缓存锁 |
 | RabbitMQ | 4.2.5-management | 15672（AMQP）、15673（管理页） | Stage 1 只验证连接 |
 
 Redis 客户端、MySQL 驱动和测试依赖跟随锁定的 Boot 依赖管理。版本依据：[Spring Boot 系统要求](https://docs.spring.io/spring-boot/3.5/system-requirements.html)、[MyBatis-Plus 安装说明](https://baomidou.com/en/getting-started/install/)。
@@ -87,6 +92,7 @@ src/main/java/com/campusbooking/
 │   ├── mapper/                    # 数据库访问
 │   └── model/                     # 用户与固定角色
 ├── common/                        # 响应与必要异常处理
+├── activity/                      # 地点/活动/场次、发布、缓存、GEO 与运行状态初始化
 └── config/                        # 拦截器注册顺序与路径
 src/main/resources/                # 配置、建表 SQL、验证码原子脚本
 src/test/java/                     # 业务、请求生命周期、隔离集成测试
@@ -141,7 +147,7 @@ sequenceDiagram
 - `application.yaml`：公共配置及默认行为；真实凭据从环境变量进入。
 - `application-dev.yaml`：与 Compose 对应的本机示例凭据和短信模拟。
 - `.env.example`：Compose 参数示例。Compose 自动读取 `.env`，Spring Boot **不自动读取**该文件；修改凭据/端口后，需要给应用设置同名环境变量。
-- `src/main/resources/db/schema.sql`：正式用户表结构；应用正常启动不自动修改数据库。
+- `src/main/resources/db/schema.sql`：用户、地点、活动与场次表结构；应用正常启动不自动修改数据库。
 - `docker/mysql/02-dev-organizer.sql`：仅开发环境种子用户，不在测试或其他环境自动执行。
 
 常用环境变量：`SERVER_PORT`、`SERVER_ADDRESS`、`DB_URL`（完整 JDBC URL）、`DB_USERNAME`、`DB_PASSWORD`、`REDIS_HOST`、`REDIS_PORT`、`REDIS_PASSWORD`、`RABBITMQ_HOST`、`RABBITMQ_PORT`、`RABBITMQ_USERNAME`、`RABBITMQ_PASSWORD`、`RABBITMQ_VHOST`。Compose 使用 `DB_PORT` 改 MySQL 映射端口时，应用须对应设置 `DB_URL`。默认只绑定本机回环地址；示例凭据只适合本机开发。
@@ -176,4 +182,4 @@ mvn -B -ntp verify -Pintegration
 
 思考题：为什么改昵称不用重写所有 Token？为什么退出后不能保证已经在执行的请求被中断？如果删除手机号唯一约束，并发创建用户时会出现什么结果？
 
-实际执行结果见 [项目方案第 10 节](docs/PROJECT_PLAN.md#10-当前交付状态)。Stage 2 仍需收到后续实施指令。
+上述复现顺序保留为 Stage 1 学习记录。接着阅读 [Stage 2 指南](docs/STAGE2_GUIDE.md)，理解发布、缓存与 GEO 数据流。实际执行结果见 [项目方案第 10 节](docs/PROJECT_PLAN.md#10-当前交付状态)。Stage 3～5 等待后续实施指令。

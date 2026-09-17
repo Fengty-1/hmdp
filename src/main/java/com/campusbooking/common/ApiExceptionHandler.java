@@ -21,7 +21,10 @@ public class ApiExceptionHandler {
                 .body(ApiResponse.error(exception.code(), exception.getMessage()));
     }
 
-    @ExceptionHandler({MethodArgumentNotValidException.class, HttpMessageNotReadableException.class})
+    @ExceptionHandler({MethodArgumentNotValidException.class, HttpMessageNotReadableException.class,
+            org.springframework.web.method.annotation.HandlerMethodValidationException.class,
+            org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class,
+            org.springframework.web.bind.MissingServletRequestParameterException.class})
     ResponseEntity<ApiResponse<Void>> invalidInput(Exception exception) {
         // 不输出绑定异常原文，避免其中包含验证码等请求内容。
         return ResponseEntity.badRequest().body(ApiResponse.error("INVALID_ARGUMENT", "请求字段、格式或取值不正确"));
@@ -29,7 +32,7 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(DataAccessException.class)
     ResponseEntity<ApiResponse<Void>> unavailable(DataAccessException exception) {
-        log.warn("Account dependency unavailable: {}", exception.getClass().getSimpleName());
+        log.warn("Application dependency unavailable: {}", exception.getClass().getSimpleName());
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .body(ApiResponse.error("SERVICE_UNAVAILABLE", "服务暂时不可用，请稍后重试"));
     }
