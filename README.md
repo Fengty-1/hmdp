@@ -1,6 +1,6 @@
 # 校园及周边活动预约平台
 
-通过活动发现、限量报名和到场核验，连接学生与校园活动组织者。当前已完成 **Stage 1：项目基础 + Account** 与 **Stage 2：Activity**，共 43 项测试通过。活动创建、场次发布、列表/详情缓存和附近查询的接口示例与阅读路线见 [Stage 2 指南](docs/STAGE2_GUIDE.md)；报名与核验按 [项目方案](docs/PROJECT_PLAN.md) 留在 Stage 3～4。验证结果见方案第 10 节。
+通过活动发现、限量报名和到场核验，连接学生与校园活动组织者。当前已完成 **Stage 1：项目基础 + Account**、**Stage 2：Activity** 与 **Stage 3：Registration**，共 **69 项测试通过**。活动发布与缓存见 [Stage 2 指南](docs/STAGE2_GUIDE.md)，Lua 受理、异步报名、结果查询与复现路线见 [Stage 3 指南](docs/STAGE3_GUIDE.md)；凭证与核验留在 Stage 4。实际验证结果见 [方案第 10 节](docs/PROJECT_PLAN.md#10-当前交付状态)。
 
 这是一个 Maven 模块、一个 Spring Boot 应用。原黑马点评的源码、配置、SQL、测试、POM 和 README 原样保存在 [legacy/hmdp](legacy/hmdp)，供学习对照；不参与根项目构建，也不连接原点评数据库。
 
@@ -18,6 +18,8 @@ mvn spring-boot:run "-Dspring-boot.run.profiles=dev"
 
 **从已有 Stage 1 数据卷继续时，先按 [Stage 2 指南第 2 节](docs/STAGE2_GUIDE.md#2-在已有-stage-1-环境继续启动) 补建三张 Activity 表，再启动应用。** 全新数据卷自动建表；无需删除数据卷。
 
+**从已有 Stage 2 数据卷继续时，按 [Stage 3 指南第 4 节](docs/STAGE3_GUIDE.md#4-在已有-stage-2-环境补表与启动) 补建两张报名表。** 应用启动不自动修改已有数据库。
+
 启动后打开另一个终端检查：
 
 ```powershell
@@ -30,11 +32,11 @@ Invoke-RestMethod http://127.0.0.1:8081/actuator/health
 | --- | --- | --- | --- |
 | Java | 21 | — | 应用运行环境 |
 | Spring Boot | 3.5.16 | 8081 | HTTP、配置、组件装配 |
-| MyBatis-Plus | 3.5.17，Boot 3 starter | — | 用户、地点、活动与场次持久化 |
-| MySQL | 8.4.8 | 13306 | 用户与活动事实、约束和发布事务 |
-| Redis | 7.4.8 | 16379 | 登录态、详情缓存、GEO、独立报名运行配置 |
+| MyBatis-Plus | 3.5.17，Boot 3 starter | — | 用户、活动与报名持久化 |
+| MySQL | 8.4.8 | 13306 | 用户、活动、报名与终态事实，约束和事务 |
+| Redis | 7.4.8 | 16379 | 登录态、详情缓存、GEO、报名运行配置、原子预占与 PENDING |
 | Redisson | 3.52.0，核心客户端 | — | 详情重建与展示更新的缓存锁 |
-| RabbitMQ | 4.2.5-management | 15672（AMQP）、15673（管理页） | Stage 1 只验证连接 |
+| RabbitMQ | 4.2.5-management | 15672（AMQP）、15673（管理页） | 异步报名、发布确认、消费 ACK 与基础死信 |
 
 Redis 客户端、MySQL 驱动和测试依赖跟随锁定的 Boot 依赖管理。版本依据：[Spring Boot 系统要求](https://docs.spring.io/spring-boot/3.5/system-requirements.html)、[MyBatis-Plus 安装说明](https://baomidou.com/en/getting-started/install/)。
 
@@ -93,8 +95,9 @@ src/main/java/com/campusbooking/
 │   └── model/                     # 用户与固定角色
 ├── common/                        # 响应与必要异常处理
 ├── activity/                      # 地点/活动/场次、发布、缓存、GEO 与运行状态初始化
-└── config/                        # 拦截器注册顺序与路径
-src/main/resources/                # 配置、建表 SQL、验证码原子脚本
+├── registration/                  # Lua 受理、MQ、报名事务、结果查询与我的报名
+└── config/                        # 拦截器、缓存锁客户端、报名消息拓扑
+src/main/resources/                # 配置、建表 SQL、验证码/发布/报名 Lua 脚本
 src/test/java/                     # 业务、请求生命周期、隔离集成测试
 docker/mysql/                      # 开发组织者初始化数据
 legacy/hmdp/                       # 原项目学习参考
@@ -125,7 +128,7 @@ sequenceDiagram
 
 **Interceptor（拦截器）**在 Controller 执行前统一处理身份。第一个负责恢复身份和续期，第二个只决定受保护接口能否放行。
 
-**ThreadLocal**为当前请求线程保存一份用户身份，使业务代码不必层层传递 HTTP 请求对象；线程会复用，所以结束时必须 `remove()`。参数校验失败、业务异常也需清理。它不自动跨线程传递，不应在未来异步消费里读取 HTTP 用户上下文。
+**ThreadLocal**为当前请求线程保存一份用户身份，使业务代码不必层层传递 HTTP 请求对象；线程会复用，所以结束时必须 `remove()`。参数校验失败、业务异常也需清理。它不自动跨线程传递；报名消息显式携带服务端确定的 userId，异步消费者不读取 HTTP 用户上下文。
 
 **DTO**是接口专用的输入输出结构；资料更新 DTO 没有 `role`、`id` 或 `phone`，避免把数据库实体直接作为可任意修改的请求。Service 使用构造器接收 Mapper 和 Redis 组件，由 Spring 创建并传入，这就是当前项目中的**依赖注入**。
 
@@ -135,7 +138,7 @@ sequenceDiagram
 | --- | --- | --- |
 | Redis 存随机 Token，只保存 ID、角色 | 续期和退出直接操作登录状态；资料修改不用同步所有 Token | 请求依赖 Redis；30 分钟是空闲过期时间，活跃请求会续期 |
 | GETEX 原子读取并续期 | 过期/退出后不因续期重新创建 key | 已通过校验、正在执行的请求不会被退出操作中断 |
-| 验证码小型 Lua 脚本 | 并发校验最多消费一次，失败次数与冷却判断有确定边界 | 仅验证码原子操作；报名 Lua 留在 Stage 3，不承诺 Redis/MySQL 全局事务 |
+| 验证码小型 Lua 脚本 | 并发校验最多消费一次，失败次数与冷却判断有确定边界 | 与 Stage 3 报名 Lua 分开，不承诺 Redis/MySQL 全局事务 |
 | MySQL 手机号唯一约束 | 并发创建用户时数据库兜底，只保留同一用户 | 遇到唯一键冲突需要重新查询；不能只依赖先查后写 |
 | 新用户固定 STUDENT，组织者通过受控 SQL 配置 | 客户端不能自行提权 | 没有角色管理接口；Token 中角色是登录时快照，人工改角色后需撤销相关 Token 并重新登录 |
 | 单条用户写入提交后再创建 Token | 登录凭证不会指向未提交用户；不引入多表事务 | Redis 签发失败时可能已建用户但未完成登录；重新取码后复用用户 |
@@ -147,17 +150,17 @@ sequenceDiagram
 - `application.yaml`：公共配置及默认行为；真实凭据从环境变量进入。
 - `application-dev.yaml`：与 Compose 对应的本机示例凭据和短信模拟。
 - `.env.example`：Compose 参数示例。Compose 自动读取 `.env`，Spring Boot **不自动读取**该文件；修改凭据/端口后，需要给应用设置同名环境变量。
-- `src/main/resources/db/schema.sql`：用户、地点、活动与场次表结构；应用正常启动不自动修改数据库。
+- `src/main/resources/db/schema.sql`：用户、地点、活动、场次、报名及终态表结构；应用正常启动不自动修改数据库。
 - `docker/mysql/02-dev-organizer.sql`：仅开发环境种子用户，不在测试或其他环境自动执行。
 
 常用环境变量：`SERVER_PORT`、`SERVER_ADDRESS`、`DB_URL`（完整 JDBC URL）、`DB_USERNAME`、`DB_PASSWORD`、`REDIS_HOST`、`REDIS_PORT`、`REDIS_PASSWORD`、`RABBITMQ_HOST`、`RABBITMQ_PORT`、`RABBITMQ_USERNAME`、`RABBITMQ_PASSWORD`、`RABBITMQ_VHOST`。Compose 使用 `DB_PORT` 改 MySQL 映射端口时，应用须对应设置 `DB_URL`。默认只绑定本机回环地址；示例凭据只适合本机开发。
 
-Token、验证码有效期和失败次数在 `app.account` 下配置。异常日志只记录必要错误类型；登录/退出记录用户 ID，不记录请求体、验证码或完整 Token。RabbitMQ 没有报名队列或消费者，健康检查仅建立连接。
+Token、验证码有效期和失败次数在 `app.account` 下配置。登录/退出记录用户 ID，不记录请求体、验证码或完整 Token。报名日志用 requestId 关联受理、发送与消费；RabbitMQ 在当前 vhost 声明持久化报名和死信队列。健康检查仅证明依赖连通，完整消息链路以集成测试为准。
 
 ## 6. 测试与复现顺序
 
 ```powershell
-# 12 项业务/请求生命周期测试，不依赖外部服务
+# 17 项业务、请求生命周期及消息边界测试，不依赖外部服务
 mvn -B -ntp test
 
 # 包含上面测试，另建独立容器运行完整链路，再打包验收
@@ -182,4 +185,4 @@ mvn -B -ntp verify -Pintegration
 
 思考题：为什么改昵称不用重写所有 Token？为什么退出后不能保证已经在执行的请求被中断？如果删除手机号唯一约束，并发创建用户时会出现什么结果？
 
-上述复现顺序保留为 Stage 1 学习记录。接着阅读 [Stage 2 指南](docs/STAGE2_GUIDE.md)，理解发布、缓存与 GEO 数据流。实际执行结果见 [项目方案第 10 节](docs/PROJECT_PLAN.md#10-当前交付状态)。Stage 3～5 等待后续实施指令。
+上述复现顺序保留为 Stage 1 学习记录。接着阅读 [Stage 2 指南](docs/STAGE2_GUIDE.md)，理解发布、缓存与 GEO 数据流，再按 [Stage 3 指南](docs/STAGE3_GUIDE.md) 复现限量报名与消费事务。实际执行结果见 [项目方案第 10 节](docs/PROJECT_PLAN.md#10-当前交付状态)。Stage 4～5 等待后续实施指令。

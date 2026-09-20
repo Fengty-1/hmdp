@@ -11,6 +11,9 @@ spring:
     hikari:
       connection-timeout: 3000
       maximum-pool-size: 10
+      data-source-properties:
+        connectTimeout: 3000
+        socketTimeout: 15000
   sql:
     init:
       mode: never
@@ -28,6 +31,16 @@ spring:
     password: ${RABBITMQ_PASSWORD}
     virtual-host: ${RABBITMQ_VHOST:campus_booking}
     connection-timeout: 3s
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+    listener:
+      simple:
+        acknowledge-mode: manual
+        default-requeue-rejected: false
+        prefetch: 20
+        concurrency: 2
   jackson:
     deserialization:
       fail-on-unknown-properties: true

@@ -53,3 +53,32 @@ CREATE TABLE IF NOT EXISTS activity_session (
         OR (status = 'PUBLISHED' AND runtime_expire_at > end_at)),
     INDEX idx_session_activity_status (activity_id, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS registration (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    request_id VARCHAR(19) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    user_id BIGINT NOT NULL,
+    session_id BIGINT NOT NULL,
+    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    CONSTRAINT uk_registration_request UNIQUE (request_id),
+    CONSTRAINT uk_registration_user_session UNIQUE (user_id, session_id),
+    CONSTRAINT fk_registration_user FOREIGN KEY (user_id) REFERENCES account_user(id),
+    CONSTRAINT fk_registration_session FOREIGN KEY (session_id) REFERENCES activity_session(id),
+    INDEX idx_registration_user (user_id, id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS registration_result (
+    request_id VARCHAR(19) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    session_id BIGINT NOT NULL,
+    status VARCHAR(16) NOT NULL,
+    registration_id BIGINT NULL,
+    failure_code VARCHAR(64) NULL,
+    completed_at TIMESTAMP(3) NOT NULL,
+    CONSTRAINT fk_result_user FOREIGN KEY (user_id) REFERENCES account_user(id),
+    CONSTRAINT fk_result_session FOREIGN KEY (session_id) REFERENCES activity_session(id),
+    CONSTRAINT fk_result_registration FOREIGN KEY (registration_id) REFERENCES registration(id),
+    CONSTRAINT ck_result_terminal CHECK (
+        (status = 'SUCCESS' AND registration_id IS NOT NULL AND failure_code IS NULL)
+        OR (status = 'FAILED' AND registration_id IS NULL AND failure_code IS NOT NULL))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
