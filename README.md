@@ -1,6 +1,6 @@
 # 校园及周边活动预约平台
 
-通过活动发现、限量报名和到场核验，连接学生与校园活动组织者。当前已完成 **Stage 1：项目基础 + Account**、**Stage 2：Activity** 与 **Stage 3：Registration**，共 **69 项测试通过**。活动发布与缓存见 [Stage 2 指南](docs/STAGE2_GUIDE.md)，Lua 受理、异步报名、结果查询与复现路线见 [Stage 3 指南](docs/STAGE3_GUIDE.md)；凭证与核验留在 Stage 4。实际验证结果见 [方案第 10 节](docs/PROJECT_PLAN.md#10-当前交付状态)。
+通过活动发现、限量报名和到场核验，连接学生与校园活动组织者。当前已完成 **Stage 1：项目基础 + Account**、**Stage 2：Activity**、**Stage 3：Registration** 与 **Stage 4：Participation**，共 **82 项测试通过**。活动发布与缓存见 [Stage 2 指南](docs/STAGE2_GUIDE.md)，Lua 受理与异步报名见 [Stage 3 指南](docs/STAGE3_GUIDE.md)，成功报名凭证、组织者核验与到场名单见 [Stage 4 指南](docs/STAGE4_GUIDE.md)。实际验证结果见 [方案第 10 节](docs/PROJECT_PLAN.md#10-当前交付状态)。
 
 这是一个 Maven 模块、一个 Spring Boot 应用。原黑马点评的源码、配置、SQL、测试、POM 和 README 原样保存在 [legacy/hmdp](legacy/hmdp)，供学习对照；不参与根项目构建，也不连接原点评数据库。
 
@@ -19,6 +19,8 @@ mvn spring-boot:run "-Dspring-boot.run.profiles=dev"
 **从已有 Stage 1 数据卷继续时，先按 [Stage 2 指南第 2 节](docs/STAGE2_GUIDE.md#2-在已有-stage-1-环境继续启动) 补建三张 Activity 表，再启动应用。** 全新数据卷自动建表；无需删除数据卷。
 
 **从已有 Stage 2 数据卷继续时，按 [Stage 3 指南第 4 节](docs/STAGE3_GUIDE.md#4-在已有-stage-2-环境补表与启动) 补建两张报名表。** 应用启动不自动修改已有数据库。
+
+**从已有 Stage 3 数据卷继续时，按 [Stage 4 指南第 4 节](docs/STAGE4_GUIDE.md#4-从已有-stage-3-环境补表) 补建凭证与参与记录表。** 核验采用场次开始（含）至结束（不含）的时间窗口。
 
 启动后打开另一个终端检查：
 
@@ -96,6 +98,7 @@ src/main/java/com/campusbooking/
 ├── common/                        # 响应与必要异常处理
 ├── activity/                      # 地点/活动/场次、发布、缓存、GEO 与运行状态初始化
 ├── registration/                  # Lua 受理、MQ、报名事务、结果查询与我的报名
+├── participation/                 # 成功报名凭证、所属组织者核验、参与记录与到场名单
 └── config/                        # 拦截器、缓存锁客户端、报名消息拓扑
 src/main/resources/                # 配置、建表 SQL、验证码/发布/报名 Lua 脚本
 src/test/java/                     # 业务、请求生命周期、隔离集成测试
@@ -185,4 +188,4 @@ mvn -B -ntp verify -Pintegration
 
 思考题：为什么改昵称不用重写所有 Token？为什么退出后不能保证已经在执行的请求被中断？如果删除手机号唯一约束，并发创建用户时会出现什么结果？
 
-上述复现顺序保留为 Stage 1 学习记录。接着阅读 [Stage 2 指南](docs/STAGE2_GUIDE.md)，理解发布、缓存与 GEO 数据流，再按 [Stage 3 指南](docs/STAGE3_GUIDE.md) 复现限量报名与消费事务。实际执行结果见 [项目方案第 10 节](docs/PROJECT_PLAN.md#10-当前交付状态)。Stage 4～5 等待后续实施指令。
+上述复现顺序保留为 Stage 1 学习记录。接着阅读 [Stage 2 指南](docs/STAGE2_GUIDE.md)，理解发布、缓存与 GEO 数据流，再按 [Stage 3 指南](docs/STAGE3_GUIDE.md) 复现限量报名与消费事务，最后按 [Stage 4 指南](docs/STAGE4_GUIDE.md) 完成凭证、组织者核验与参与记录。实际执行结果见 [项目方案第 10 节](docs/PROJECT_PLAN.md#10-当前交付状态)。Stage 5 等待后续实施指令。

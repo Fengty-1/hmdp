@@ -82,3 +82,19 @@ CREATE TABLE IF NOT EXISTS registration_result (
         (status = 'SUCCESS' AND registration_id IS NOT NULL AND failure_code IS NULL)
         OR (status = 'FAILED' AND registration_id IS NULL AND failure_code IS NOT NULL))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS participation_credential (
+    registration_id BIGINT NOT NULL PRIMARY KEY,
+    code CHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    CONSTRAINT uk_participation_credential_code UNIQUE (code),
+    CONSTRAINT fk_credential_registration FOREIGN KEY (registration_id) REFERENCES registration(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS participation_record (
+    registration_id BIGINT NOT NULL PRIMARY KEY,
+    checked_by BIGINT NOT NULL,
+    checked_at TIMESTAMP(3) NOT NULL,
+    CONSTRAINT fk_participation_credential FOREIGN KEY (registration_id) REFERENCES participation_credential(registration_id),
+    CONSTRAINT fk_participation_organizer FOREIGN KEY (checked_by) REFERENCES account_user(id),
+    INDEX idx_participation_time (checked_at, registration_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
